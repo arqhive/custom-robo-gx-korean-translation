@@ -1,0 +1,6 @@
+*.gba
+*.sav
+*.png
+build/
+release/
+__pycache__/
