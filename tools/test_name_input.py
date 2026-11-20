@@ -12,6 +12,7 @@ mod, entry = N.module(BASE)
 
 def new_cpu():
     uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB)
+    uc.ctl_set_cpu_model(UC_CPU_ARM_926)   # GBA처럼 Thumb-2 없는 CPU(ARMv5TE)
     uc.mem_map(0x08000000, 0x01000000)
     uc.mem_map(0x02000000, 0x40000)
     uc.mem_map(0x03000000, 0x8000)

@@ -15,6 +15,7 @@
 """
 import json, os, struct, sys
 from keystone import Ks, KS_ARCH_ARM, KS_MODE_THUMB
+import thumb1
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORDER_FILE = os.path.join(ROOT, 'work/font/hangul_order.txt')
@@ -179,11 +180,15 @@ entry:
     ldr  r6, [r5, #0x10]      @ r6 = 버퍼
     sub  sp, #16
     cmp  r4, #0
-    beq  append
+    bne  e_nonempty           @ GBA는 Thumb-1만 안다: 먼 조건 분기(beq.w 등)는 짧은 분기+b로
+    b    append
+e_nonempty:
     bl   code2dec
     lsrs r1, r0, #8
     cmp  r1, #0x80
-    bne  append               @ 자모가 아니면 그냥 붙임(위 바이트 0x80=자모, 0xFF=한글 아님)
+    beq  e_jamo
+    b    append               @ 자모가 아니면 그냥 붙임(위 바이트 0x80=자모, 0xFF=한글 아님)
+e_jamo:
     lsls r0, r0, #24
     lsrs r0, r0, #24
     str  r0, [sp]             @ j
@@ -470,6 +475,8 @@ def module(base):
         addrs.append(base + off + len(blob)); blob += data; blob += bytes((-len(blob)) % 4)
     code2 = build(addrs)
     assert len(code2) == len(code)
+    ncode = code2.index(struct.pack('<I', RET_OK | 1))            # 리터럴(.word, 첫째 ret_ok) 앞까지가 명령
+    thumb1.check(code2, base, ncode, what='이름 입력 조합 루틴')
     out = code2 + bytes(off - len(code2)) + bytes(blob)
     return out, base
 
@@ -503,9 +510,14 @@ KO_GRID = ['ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊ', 'ㅋㅌㅍㅎㄲㄸㅃㅆㅉ　', '
 # 메뉴 열(줄 0~5): (글자, 종류, 가는 페이지). 종류 1=페이지 전환, 2=끝, 3=빈칸(커서가 건너뛰고 **다시 그리지 않음**)
 # 빈칸은 그려지지 않아 앞 페이지 글자가 남으므로, 빈칸 줄(2·3·5)은 모든 페이지에서 같게 두고
 # 이름은 원래처럼 4칸(「英文字　」)이 되게 전각 공백으로 채워 앞 페이지 이름을 덮는다.
-MENU = {0: [('영문　　', 1, 2), ('숫자　　', 1, 3), ('', 3, 0), ('', 3, 0), ('끝　　　', 2, 0), ('', 3, 0)],
-        2: [('한글　　', 1, 0), ('숫자　　', 1, 3), ('', 3, 0), ('', 3, 0), ('끝　　　', 2, 0), ('', 3, 0)],
-        3: [('한글　　', 1, 0), ('영문　　', 1, 2), ('', 3, 0), ('', 3, 0), ('끝　　　', 2, 0), ('', 3, 0)]}
+# 가는 페이지 번호는 patch_grid가 페이지 표를 [한글, 영문, 숫자, カタカナ] 순으로 바꾼 뒤의 번호(영문 1, 숫자 2).
+MENU = {0: [('영문　　', 1, 1), ('숫자　　', 1, 2), ('', 3, 0), ('', 3, 0), ('끝　　　', 2, 0), ('', 3, 0)],
+        2: [('한글　　', 1, 0), ('숫자　　', 1, 2), ('', 3, 0), ('', 3, 0), ('끝　　　', 2, 0), ('', 3, 0)],
+        3: [('한글　　', 1, 0), ('영문　　', 1, 1), ('', 3, 0), ('', 3, 0), ('끝　　　', 2, 0), ('', 3, 0)]}
+# L·R은 페이지 0 ~ (개수−1)을 돈다(0x8014C68, 개수는 0x80149D4 `movs r0, #4`로 상태 +0x25에).
+# カタカナ 페이지는 메뉴 한자(英数字·記号·終わり) 코드를 한글이 써서 「됏 껏」으로 보이고, 그 줄이 다른 페이지에 남는다
+# → 페이지 표를 [0 한글, 2 영문, 3 숫자, 1 カタカナ]로 바꾸고 개수를 3으로 해서 L·R에서 뺀다(11/21 사용자).
+PAGE_COUNT_INSN = 0x149D4
 
 
 def cell(old, text, kind, page=0):
@@ -535,6 +547,10 @@ def patch_grid(rom):
                 else:
                     continue                      # 영문·숫자 페이지 글자 칸은 원래대로
                 rom[o:o+12] = new
+    tbl = bytes(rom[PAGES:PAGES + 48])
+    rom[PAGES:PAGES + 48] = b''.join(tbl[12 * p:12 * p + 12] for p in (0, 2, 3, 1))
+    assert rom[PAGE_COUNT_INSN:PAGE_COUNT_INSN + 2] == bytes.fromhex('0420'), '0x80149D4가 movs r0, #4 가 아님'
+    rom[PAGE_COUNT_INSN:PAGE_COUNT_INSN + 2] = bytes.fromhex('0320')      # movs r0, #3
 
 
 def patch(rom, base):

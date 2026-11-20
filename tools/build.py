@@ -18,11 +18,12 @@ from keystone import Ks, KS_ARCH_ARM, KS_MODE_THUMB
 sys.path.insert(0, os.path.dirname(__file__))
 import gxtext as g
 import name_input as N
+import thumb1
 import script as S
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'Custom Robo GX (Japan).gba')
-VERSION = 'v1.0f'
+VERSION = 'v1.1f'
 OUT = os.path.join(ROOT, 'build', 'Custom Robo GX (Japan) [KO %s].gba' % VERSION)
 FONT = os.path.join(ROOT, 'tools', 'fonts', 'Galmuri11-Condensed.ttf')
 TR = os.path.join(ROOT, 'work', 'translation')
@@ -905,7 +906,7 @@ def dialogue_hook(rom, alloc):
     veneer:
         bx r2
     '''
-    code = bytes(ks.asm(src, 0x08000000 + base)[0])
+    code = thumb1.check_pool(bytes(ks.asm(src, 0x08000000 + base)[0]), 0x08000000 + base, '대사 훅')
     assert len(code) <= 0x80; rom[base:base+len(code)] = code; a = base
 
     patch = bytes(ks.asm('ldr r0, [pc, #0]' + chr(10) + 'bx r0', 0x0800D520)[0]) + struct.pack('<I', 0x08000000 + a | 1)
@@ -1001,7 +1002,7 @@ def glyph_hook(rom, alloc, codes, gidx):
         ldr r2, =0x0800CD35
         bx r2
     '''
-    code = bytes(ks.asm(src, 0x08000000 + base)[0])
+    code = thumb1.check_pool(bytes(ks.asm(src, 0x08000000 + base)[0]), 0x08000000 + base, '글자 그리기 훅')
     assert len(code) <= 0x100; rom[base:base+len(code)] = code; a = base
 
     assert rom[0xCD2C:0xCD34] == bytes.fromhex('30b5041c0d1ca078'), rom[0xCD2C:0xCD34].hex()
@@ -1039,7 +1040,7 @@ def linear_search(rom):
         pop {r1}
         bx r1
     '''
-    code = bytes(ks.asm(src, 0x08000E54)[0])
+    code = thumb1.check_pool(bytes(ks.asm(src, 0x08000E54)[0]), 0x08000E54, '선형 탐색')
     assert len(code) <= 0x44 and rom[0xE54:0xE56] == bytes.fromhex('f0b5')
     rom[0xE54:0xE98] = code + bytes.fromhex('c046') * ((0x44 - len(code)) // 2)
 

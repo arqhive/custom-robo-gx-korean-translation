@@ -15,6 +15,7 @@ WIN = 0x020127BC
 def run(rom_path, text_off, x, y, w, h, frame=1, verbose=False):
     rom = open(rom_path, 'rb').read()
     uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB)
+    uc.ctl_set_cpu_model(UC_CPU_ARM_926)   # GBA처럼 Thumb-2 없는 CPU(ARMv5TE)
     uc.mem_map(0x08000000, 0x01000000)
     uc.mem_write(0x08000000, rom)
     for base, size in ((0x02000000, 0x40000), (0x03000000, 0x8000), (0x04000000, 0x1000),
